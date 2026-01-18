@@ -9,6 +9,8 @@ import { MoveOutcome, handleMove } from "../../internal/gamelogic/move.js";
 import { ExchangePerilTopic } from "../../internal/routing/routing.js";
 import type { ArmyMove, RecognitionOfWar } from "../../internal/gamelogic/gamedata.js";
 import { WarRecognitionsPrefix } from "../../internal/routing/routing.js";
+import { publishGameLog } from "../../client/index.js";
+import { writeLog, type GameLog } from "../gamelogic/logs.js";
 
 export function handlerPause(gs: GameState): (ps: PlayingState) => AckType {
   return (ps) => {
@@ -46,7 +48,7 @@ export function handlerMove(
   };
 }
 
-export function handlerWar(gs: GameState): (war: RecognitionOfWar) => Promise<AckType> {
+export function handlerWar(gs: GameState, channel: ConfirmChannel): (war: RecognitionOfWar) => Promise<AckType> {
   return async (war: RecognitionOfWar): Promise<AckType> => {
     try {
       const outcome = handleWar(gs, war);
@@ -58,14 +60,57 @@ export function handlerWar(gs: GameState): (war: RecognitionOfWar) => Promise<Ac
         case WarOutcome.NoUnits:
           return Acks.NackDiscard;
         case WarOutcome.YouWon:
+          try {
+            await publishGameLog(
+              channel,
+              war.attacker.username,
+              `${outcome.winner} won a war against ${outcome.loser}.`
+            );
+          } catch (error) {
+            return Acks.NackRequeue;
+          }
+          return Acks.Ack;
         case WarOutcome.OpponentWon:
+          try {
+            await publishGameLog(
+              channel,
+              war.attacker.username,
+              `${outcome.winner} won a war against ${outcome.loser}.`
+            );
+          } catch (error) {
+            return Acks.NackRequeue;
+          }
+          return Acks.Ack;
         case WarOutcome.Draw:
+          try {
+            await publishGameLog(
+              channel,
+              war.attacker.username,
+              `A war between ${outcome.attacker} and ${outcome.defender} resulted in a draw`
+            );
+          } catch (error) {
+            return Acks.NackRequeue;
+          }
           return Acks.Ack;
         default:
           const unreachable: never = outcome;
           console.log("Unexpected war resolution: ", unreachable);
           return Acks.NackDiscard;
       }
+    } finally {
+      process.stdout.write("> ");
+    }
+  };
+}
+
+export function handlerLog(): (gameLog: GameLog) => Promise<AckType> {
+  return async (gameLog) => {
+    try {
+      writeLog(gameLog);
+      return Acks.Ack;
+    } catch (err) {
+      console.error("Error writing log:", err);
+      return Acks.NackDiscard;
     } finally {
       process.stdout.write("> ");
     }
