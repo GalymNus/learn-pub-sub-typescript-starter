@@ -1,30 +1,6 @@
 import amqp, { type Channel, type ConfirmChannel } from "amqplib";
 import { GameState } from "../gamelogic/gamestate.js";
 
-export async function publishJSON<T>(
-  ch: ConfirmChannel,
-  exchange: string,
-  routingKey: string,
-  value: T,
-): Promise<void> {
-  const jsonString = JSON.stringify(value);
-  const jsonBuffer = Buffer.from(jsonString);
-  await new Promise<void>((resolve, reject) => {
-    ch.publish(
-      exchange,
-      routingKey,
-      jsonBuffer,
-      { contentType: "application/json" },
-      (err) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
-  });
-};
-
 export enum UserCommands {
   PauseKey = "pause",
   ResumeKey = "resume",
@@ -46,32 +22,60 @@ export async function declareAndBind(
   exchange: string,
   queueName: string,
   key: string,
-  queueType: SimpleQueueType,
+  queueType: SimpleQueueType
 ): Promise<[Channel, amqp.Replies.AssertQueue]> {
-  const options = { durable: queueType == SimpleQueueType.Durable, autoDelete: queueType == SimpleQueueType.Transient, exclusive: queueType == SimpleQueueType.Transient }
+  const options = {
+    durable: queueType == SimpleQueueType.Durable,
+    autoDelete: queueType == SimpleQueueType.Transient,
+    exclusive: queueType == SimpleQueueType.Transient,
+    arguments: {
+      "x-dead-letter-exchange": "peril_dlx",
+    },
+  };
   const channel = await conn.createChannel();
   const queue = await channel.assertQueue(queueName, options);
   await channel.bindQueue(queue.queue, exchange, key);
   return [channel, queue];
-};
+}
+
+export enum Acks {
+  "Ack",
+  "NackRequeue",
+  "NackDiscard",
+}
+
+export type AckType = Acks.Ack | Acks.NackRequeue | Acks.NackDiscard;
 
 export async function subscribeJSON<T>(
   conn: amqp.ChannelModel,
   exchange: string,
   queueName: string,
   key: string,
-  queueType: SimpleQueueType, // an enum to represent "durable" or "transient"
-  handler: (data: T) => void,
+  queueType: SimpleQueueType,
+  handler: (data: T) => Promise<AckType> | AckType
 ): Promise<void> {
   const [channel, queue] = await declareAndBind(conn, exchange, queueName, key, queueType);
-  channel.consume(queue.queue, (msg: amqp.ConsumeMessage | null) => {
-    if (msg == null) {
-      return;
-    }
-    const msgString = msg.content.toString();
-    const messageBody = JSON.parse(msgString);
-    handler(messageBody as T);
-    channel.ack(msg);
-  }, { noAck: false });
+  await channel.consume(
+    queue.queue,
+    (msg: amqp.ConsumeMessage | null) => {
+      if (msg == null) {
+        return;
+      }
+      const msgString = msg.content.toString();
+      const messageBody = JSON.parse(msgString);
+      const handlerAckType = handler(messageBody as T);
+      switch (handlerAckType) {
+        case Acks.Ack:
+          channel.ack(msg);
+          break;
+        case Acks.NackRequeue:
+          channel.nack(msg, false, true);
+          break;
+        case Acks.NackDiscard:
+          channel.nack(msg, false, false);
+          break;
+      }
+    },
+    { noAck: false }
+  );
 }
-

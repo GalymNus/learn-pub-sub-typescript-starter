@@ -1,5 +1,6 @@
 import amqp from "amqplib";
-import { publishJSON, declareAndBind, SimpleQueueType, UserCommands } from "../internal/pubsub/helpers.js";
+import { declareAndBind, SimpleQueueType, UserCommands } from "../internal/pubsub/helpers.js";
+import { publishJSON } from "../internal/pubsub/publish.js";
 import { ExchangePerilDirect, ExchangePerilTopic, GameLogSlug } from "../internal/routing/routing.js";
 import type { PlayingState } from "../internal/gamelogic/gamestate.js";
 import { getInput, printServerHelp } from "../internal/gamelogic/gamelogic.js";
@@ -9,7 +10,7 @@ async function main() {
   const connectionString = "amqp://guest:guest@localhost:5672/";
   const connection = await amqp.connect(connectionString);
   console.log("Created connection");
-  const channel = await connection.createConfirmChannel()
+  const channel = await connection.createConfirmChannel();
   await declareAndBind(connection, ExchangePerilTopic, GameLogSlug, `${GameLogSlug}.*`, SimpleQueueType.Durable);
   printServerHelp();
   while (true) {
@@ -40,11 +41,10 @@ async function main() {
     console.log("Game is shutting down");
     await connection.close();
     process.exit();
-  })
+  });
 }
 
 main().catch((err) => {
   console.error("Fatal error:", err);
   process.exit(1);
 });
-
