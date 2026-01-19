@@ -12,6 +12,10 @@ async function main() {
   console.log("Created connection");
   const channel = await connection.createConfirmChannel();
   await declareAndBind(connection, ExchangePerilTopic, GameLogSlug, `${GameLogSlug}.*`, SimpleQueueType.Durable);
+  if (!process.stdin.isTTY) {
+    console.log("Non-interactive mode: skipping command input.");
+    return;
+  }
   printServerHelp();
   while (true) {
     const words = await getInput();
