@@ -31,9 +31,10 @@ export async function subscribe<T>(
   routingKey: string,
   simpleQueueType: SimpleQueueType,
   handler: (data: T) => Promise<AckType> | AckType,
-  unmarshaller: (data: Buffer) => T
+  unmarshaller: (data: Buffer) => T,
 ): Promise<void> {
   const [channel, queue] = await declareAndBind(connection, exchange, queueName, routingKey, simpleQueueType);
+  await channel.prefetch(5);
   await channel.consume(
     queue.queue,
     async (msg: amqp.ConsumeMessage | null) => {
@@ -68,7 +69,7 @@ export async function subscribe<T>(
     },
     {
       noAck: false,
-    }
+    },
   );
 }
 
@@ -77,7 +78,7 @@ export async function declareAndBind(
   exchange: string,
   queueName: string,
   key: string,
-  queueType: SimpleQueueType
+  queueType: SimpleQueueType,
 ): Promise<[Channel, Replies.AssertQueue]> {
   const options = {
     durable: queueType == SimpleQueueType.Durable,

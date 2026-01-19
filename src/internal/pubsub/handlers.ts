@@ -23,7 +23,7 @@ export function handlerPause(gs: GameState): (ps: PlayingState) => AckType {
 export function handlerMove(
   gs: GameState,
   channel: ConfirmChannel,
-  username: string
+  username: string,
 ): (move: ArmyMove) => Promise<AckType> {
   return async (move: ArmyMove): Promise<AckType> => {
     const moveOutcome = handleMove(gs, move);
@@ -64,7 +64,7 @@ export function handlerWar(gs: GameState, channel: ConfirmChannel): (war: Recogn
             await publishGameLog(
               channel,
               war.attacker.username,
-              `${outcome.winner} won a war against ${outcome.loser}.`
+              `${outcome.winner} won a war against ${outcome.loser}.`,
             );
           } catch (error) {
             return Acks.NackRequeue;
@@ -75,7 +75,7 @@ export function handlerWar(gs: GameState, channel: ConfirmChannel): (war: Recogn
             await publishGameLog(
               channel,
               war.attacker.username,
-              `${outcome.winner} won a war against ${outcome.loser}.`
+              `${outcome.winner} won a war against ${outcome.loser}.`,
             );
           } catch (error) {
             return Acks.NackRequeue;
@@ -86,7 +86,7 @@ export function handlerWar(gs: GameState, channel: ConfirmChannel): (war: Recogn
             await publishGameLog(
               channel,
               war.attacker.username,
-              `A war between ${outcome.attacker} and ${outcome.defender} resulted in a draw`
+              `A war between ${outcome.attacker} and ${outcome.defender} resulted in a draw`,
             );
           } catch (error) {
             return Acks.NackRequeue;

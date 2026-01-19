@@ -1,6 +1,13 @@
 import amqp, { type ConfirmChannel } from "amqplib";
 
-import { clientWelcome, commandStatus, getInput, printClientHelp, printQuit } from "../internal/gamelogic/gamelogic.js";
+import {
+  clientWelcome,
+  commandStatus,
+  getInput,
+  getMaliciousLog,
+  printClientHelp,
+  printQuit,
+} from "../internal/gamelogic/gamelogic.js";
 import { SimpleQueueType, UserCommands } from "../internal/pubsub/helpers.js";
 import { publishJSON, publishMsgPack } from "../internal/pubsub/publish.js";
 import { subscribeMsgPack, subscribeJSON } from "../internal/pubsub/consume.js";
@@ -18,6 +25,7 @@ import type { ArmyMove, RecognitionOfWar } from "../internal/gamelogic/gamedata.
 import { WarRecognitionsPrefix } from "../internal/routing/routing.js";
 import { handlerPause, handlerMove, handlerWar, handlerLog } from "../internal/pubsub/handlers.js";
 import { type GameLog } from "../internal/gamelogic/logs.js";
+import { isNumberObject } from "util/types";
 
 async function main() {
   console.log("Starting Peril client...");
@@ -33,7 +41,7 @@ async function main() {
     `${PauseKey}.${username}`,
     UserCommands.PauseKey,
     SimpleQueueType.Transient,
-    handlerPause(gameState)
+    handlerPause(gameState),
   );
   await subscribeJSON<ArmyMove>(
     connection,
@@ -41,7 +49,7 @@ async function main() {
     `${ArmyMovesPrefix}.${username}`,
     `${ArmyMovesPrefix}.*`,
     SimpleQueueType.Transient,
-    handlerMove(gameState, channel, username)
+    handlerMove(gameState, channel, username),
   );
   await subscribeJSON<RecognitionOfWar>(
     connection,
@@ -49,7 +57,7 @@ async function main() {
     WarRecognitionsPrefix,
     `${WarRecognitionsPrefix}.*`,
     SimpleQueueType.Durable,
-    handlerWar(gameState, channel)
+    handlerWar(gameState, channel),
   );
   await subscribeMsgPack(
     connection,
@@ -57,7 +65,7 @@ async function main() {
     GameLogSlug,
     `${GameLogSlug}.*`,
     SimpleQueueType.Durable,
-    handlerLog()
+    handlerLog(),
   );
 
   while (true) {
@@ -84,6 +92,24 @@ async function main() {
         printClientHelp();
         continue;
       } else if (words[0] == UserCommands.Spam) {
+        try {
+          if (!words[1]) {
+            throw new Error("Second argument is required (number from 10 to 100)");
+          } else {
+            const spamNumber = parseInt(words[1] || "");
+            if (typeof spamNumber == "number") {
+              for (let i = 0; i < spamNumber; i++) {
+                const gameLog = getMaliciousLog();
+                publishGameLog(channel, username, gameLog);
+              }
+            } else {
+              throw new Error("Second argument is invalid number.");
+            }
+          }
+        } catch (error) {
+          console.log("Error:", error);
+        }
+
         console.log("Spamming not allowed yet!");
       } else if (words[0] == UserCommands.Quit) {
         console.log("Spamming not allowed yet!");
@@ -98,12 +124,7 @@ async function main() {
 
 export async function publishGameLog(channel: ConfirmChannel, username: string, message: string): Promise<void> {
   const gameLog: GameLog = { username, message, currentTime: new Date() };
-  console.log("PUBLISHING GAME LOG:", {
-    exchange: ExchangePerilTopic,
-    routingKey: GameLogSlug,
-    gameLog,
-  });
-  return publishMsgPack(channel, ExchangePerilTopic, `${GameLogSlug}.*`, gameLog);
+  return publishMsgPack(channel, ExchangePerilTopic, `${GameLogSlug}.${username}`, gameLog);
 }
 
 main().catch((err) => {
